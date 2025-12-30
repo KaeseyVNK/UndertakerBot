@@ -1,0 +1,67 @@
+Hướng dẫn tùy chỉnh văn bản trong Discord Embeds
+
+--- 1. MÀU CHỮ (SỬ DỤNG MẸO) ---
+
+Bạn không thể chọn màu tùy ý, nhưng có thể dùng các khối mã (code block) để tạo ra các màu cố định.
+
+- **Cách dùng**: Bọc văn bản của bạn trong ``` và thêm tên ngôn ngữ định dạng ở dòng đầu tiên.
+
+- **Văn bản Xanh lá (Green)**:
+  ```ini
+  [Đây là văn bản màu xanh lá]
+  ```
+
+- **Văn bản Vàng (Yellow)**:
+  ```fix
+  Đây là văn bản màu vàng
+  ```
+
+- **Văn bản Xanh dương (Blue)**:
+  ```css
+  .Màu_xanh_dương { color: blue; }
+  ```
+  Lưu ý: Bạn phải dùng cú pháp của CSS để nó hiện màu.
+
+- **Văn bản Đỏ (Red)**:
+  ```diff
+  - Dòng này sẽ có màu đỏ
+  ```
+
+- **Văn bản Cam (Orange)**:
+  ```cs
+  # Dòng này sẽ có màu cam
+  ```
+
+--- 2. KÍCH THƯỚC CHỮ ---
+
+Kích thước chữ là cố định và do người dùng cài đặt trên client Discord của họ. Bạn không thể thay đổi trực tiếp.
+Tuy nhiên, bạn có thể dùng Markdown để làm chữ nổi bật hơn:
+
+- **In đậm**: `**Chữ đậm**`
+- **Gạch chân**: `__Chữ gạch chân__`
+- **In nghiêng**: `*Chữ nghiêng*`
+
+- **Sử dụng Tiêu đề (Headings)**: Chỉ hoạt động trong `.setDescription()`.
+  ```
+  # Tiêu đề lớn
+  ## Tiêu đề vừa
+  ### Tiêu đề nhỏ
+  ```
+
+--- 3. KHOẢNG CÁCH DÒNG & KHOẢNG TRỐNG ---
+
+- **Thêm dòng trống**: Sử dụng ký tự xuống dòng `\n`.
+  `'Dòng 1\n\nDòng 2'` -> Sẽ có một dòng trắng ở giữa.
+
+- **Tạo khoảng trống lớn (Empty Field)**: Dùng để phân tách các khu vực trong Embed.
+  Đây là cách hiệu quả nhất để tạo khoảng cách theo chiều dọc.
+  Thêm một field vào embed của bạn như sau:
+  `{ name: '\u200B', value: '\u200B' }`
+
+  Ký tự `\u200B` là một "khoảng trắng không độ rộng", nó vô hình nhưng giúp field đó hợp lệ.
+
+- **Sử dụng Block Quotes**: Dùng để thụt lề văn bản, tạo ra một kiểu khoảng cách khác.
+  `> Dòng này sẽ được thụt vào.`
+  `>>> Khối này gồm nhiều dòng\nsẽ được thụt vào.`
+
+Chúc bạn tạo ra những Embed đẹp mắt! 

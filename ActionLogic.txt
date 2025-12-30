@@ -1,0 +1,407 @@
+const { SlashCommandBuilder } = require('discord.js');
+const gameManager = require('../../game/GameManager');
+const { createDeck, shuffleDeck } = require('../../game/Deck');
+
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('flip7')
+        .setDescription('Chơi game Flip 7!')
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('start')
+                .setDescription('Bắt đầu một phòng chơi Flip 7 mới.'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('join')
+                .setDescription('Tham gia vào phòng chơi Flip 7.'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('begin')
+                .setDescription('Bắt đầu ván game (chỉ chủ phòng).'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('leave')
+                .setDescription('Rời khỏi phòng chơi Flip 7.'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('hit')
+                .setDescription('Rút thêm một lá bài.'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('stay')
+                .setDescription('Dừng lượt và giữ lại điểm hiện tại.'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('hand')
+                .setDescription('Xem lại các lá bài trên tay của bạn.'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('status')
+                .setDescription('Xem trạng thái hiện tại của bàn chơi.')),
+    async execute(interaction) {
+        const subcommand = interaction.options.getSubcommand();
+        const channelId = interaction.channelId;
+
+        if (subcommand === 'start') {
+            const { game, error } = gameManager.createGame(channelId);
+
+            if (error) {
+                return interaction.reply({ content: error, ephemeral: true });
+            }
+
+            // Thêm người tạo phòng làm người chơi đầu tiên
+            const host = interaction.user;
+            game.players.push({
+                id: host.id,
+                username: host.username,
+                score: 0,
+                totalScore: 0,
+                hand: [],
+            });
+
+            return interaction.reply(`Phòng chơi Flip 7 đã được tạo bởi **${host.username}**! Dùng lệnh \`/flip7 join\` để tham gia.`);
+        } else if (subcommand === 'join') {
+            const game = gameManager.getGame(channelId);
+
+            if (!game) {
+                return interaction.reply({ content: 'Không có phòng chơi nào đang hoạt động ở kênh này. Dùng `/flip7 start` để tạo phòng.', ephemeral: true });
+            }
+
+            if (game.gameState !== 'waiting') {
+                return interaction.reply({ content: 'Rất tiếc, ván game đã bắt đầu. Bạn không thể tham gia nữa.', ephemeral: true });
+            }
+
+            if (game.players.find(p => p.id === interaction.user.id)) {
+                return interaction.reply({ content: 'Bạn đã ở trong phòng chơi rồi.', ephemeral: true });
+            }
+
+            if (game.players.length >= 4) {
+                return interaction.reply({ content: 'Rất tiếc, phòng đã đủ 4 người chơi.', ephemeral: true });
+            }
+
+            const newUser = interaction.user;
+            game.players.push({
+                id: newUser.id,
+                username: newUser.username,
+                score: 0,
+                totalScore: 0,
+                hand: [],
+            });
+
+            return interaction.reply(`**${newUser.username}** đã tham gia phòng chơi! Hiện tại có ${game.players.length}/4 người chơi.`);
+        } else if (subcommand === 'leave') {
+            const game = gameManager.getGame(channelId);
+
+            if (!game) {
+                return interaction.reply({ content: 'Không có phòng chơi nào đang hoạt động ở kênh này.', ephemeral: true });
+            }
+
+            const playerIndex = game.players.findIndex(p => p.id === interaction.user.id);
+
+            if (playerIndex === -1) {
+                return interaction.reply({ content: 'Bạn không có trong phòng chơi này.', ephemeral: true });
+            }
+
+            const leavingUser = game.players[playerIndex];
+            game.players.splice(playerIndex, 1);
+
+            // Nếu host rời đi và còn người khác, chuyển host cho người tiếp theo
+            if (playerIndex === 0 && game.players.length > 0) {
+                 return interaction.reply(`**${leavingUser.username}** đã rời phòng. **${game.players[0].username}** hiện là chủ phòng mới. (${game.players.length}/4)`);
+            }
+
+            // Nếu không còn ai, xóa game
+            if (game.players.length === 0) {
+                gameManager.endGame(channelId);
+                return interaction.reply(`**${leavingUser.username}** đã rời phòng. Phòng chơi đã được giải tán vì không còn ai.`);
+            }
+
+            return interaction.reply(`**${leavingUser.username}** đã rời khỏi phòng chơi. Hiện tại có ${game.players.length}/4 người chơi.`);
+        } else if (subcommand === 'begin') {
+            const game = gameManager.getGame(channelId);
+
+            if (!game || game.players.length === 0) {
+                return interaction.reply({ content: 'Không có phòng chơi nào để bắt đầu.', ephemeral: true });
+            }
+
+            if (game.players[0].id !== interaction.user.id) {
+                return interaction.reply({ content: 'Chỉ có chủ phòng mới có thể bắt đầu ván game.', ephemeral: true });
+            }
+
+            if (game.gameState === 'in-progress') {
+                return interaction.reply({ content: 'Ván game đã bắt đầu rồi.', ephemeral: true });
+            }
+
+            game.gameState = 'in-progress';
+            const deck = createDeck();
+            game.deck = shuffleDeck(deck);
+
+            // Deal one card to each player
+            game.players.forEach(player => {
+                const card = gameManager.drawCard(game);
+                if(card.type === 'action' && card.name === 'Flip Three') {
+                    player.hand.push(card);
+                    player.hand.push(gameManager.drawCard(game));
+                    player.hand.push(gameManager.drawCard(game));
+                    player.hand.push(gameManager.drawCard(game));
+                }
+                else if(card.type === 'action' && card.name === 'Freeze') {
+                    game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.players.length; // Next player
+                    const nextPlayer = game.players[game.currentPlayerIndex];
+                    return interaction.reply(`**${player.username}** đã rút lá **${card.name}** nên bị **Mất lượt!**\n\nĐến lượt của **${nextPlayer.username}**.`);
+                }
+                else if(card.type === 'action' && card.name === 'Second Chance') {
+                    player.hand.push(card);
+                }
+                else {
+                    player.hand.push(card);
+                }
+            });
+
+            // TODO: Create a proper game state embed
+            const hands = game.players.map(p => `**${p.username}**: ${p.hand.map(c => c.name).join(', ')}`).join('\n');
+            const currentPlayer = game.players[game.currentPlayerIndex];
+
+            return interaction.reply(`Game đã bắt đầu!\n\n${hands}\n\nĐến lượt của **${currentPlayer.username}**. Dùng \`/flip7 hit\` hoặc \`/flip7 stay\`.`);
+
+        } else if (subcommand === 'hit') {
+            const game = gameManager.getGame(channelId);
+            const player = game.players[game.currentPlayerIndex];
+
+            if (!game || game.gameState !== 'in-progress') {
+                return interaction.reply({ content: 'Ván game chưa bắt đầu hoặc đã kết thúc.', ephemeral: true });
+            }
+
+            if (player.id !== interaction.user.id) {
+                return interaction.reply({ content: 'Chưa đến lượt của bạn.', ephemeral: true });
+            }
+
+            await interaction.deferReply();
+
+            const newCard = gameManager.drawCard(game);
+
+            // XỬ LÝ LÁ 'FREEZE'
+            if (newCard.name === 'Freeze') {
+                player.hasStayed = true; // Dừng lượt chơi
+
+                let roundScore = 0;
+                const numberCards = player.hand.filter(c => c.type === 'number');
+                const modifierCards = player.hand.filter(c => c.type === 'modifier');
+                let hasX2 = false;
+
+                roundScore = numberCards.reduce((sum, card) => sum + card.value, 0);
+                modifierCards.forEach(mod => {
+                    if (mod.name === 'x2') hasX2 = true;
+                    else roundScore += mod.value;
+                });
+                if (hasX2) roundScore *= 2;
+
+                player.score = roundScore;
+                player.totalScore += player.score;
+
+                if (player.totalScore >= 200) {
+                    gameManager.endGame(interaction.channelId);
+                    return interaction.editReply(`**${player.username}** rút trúng lá **Freeze** và dừng lượt!\n🎉 **${player.username.toUpperCase()} LÀ NGƯỜI CHIẾN THẮNG!** 🎉\n**${player.username}** đã đạt được **${player.totalScore}** điểm và kết thúc trò chơi!`);
+                }
+
+                game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.players.length;
+                const nextPlayer = game.players[game.currentPlayerIndex];
+
+                const replyMessage = `**${player.username}** đã rút lá **Freeze** và phải dừng lượt!\nĐiểm vòng này: **${player.score}**. Tổng điểm: **${player.totalScore}**.\n\nĐến lượt của **${nextPlayer.username}**.`;
+
+                player.hand = [];
+                player.score = 0;
+                player.isBusted = false;
+                player.hasStayed = false;
+
+                return interaction.editReply(replyMessage);
+            }
+
+            player.hand.push(newCard);
+            let drawnCardsMessage = `**${player.username}** đã rút lá **${newCard.name}**.`;
+
+            // XỬ LÝ LÁ 'FLIP THREE'
+            if (newCard.name === 'Flip Three') {
+                const extraCards = [];
+                for (let i = 0; i < 3; i++) {
+                    const extraCard = gameManager.drawCard(game);
+                    if (extraCard) {
+                        player.hand.push(extraCard);
+                        extraCards.push(`**${extraCard.name}**`);
+                    }
+                }
+                drawnCardsMessage = `**${player.username}** rút trúng **Flip Three** và bốc thêm 3 lá: ${extraCards.join(', ')}.`;
+            }
+
+            const numberCardsInHand = player.hand.filter(c => c.type === 'number');
+
+            // THẮNG NGAY LẬP TỨC: 7 lá bài số khác nhau
+            if (numberCardsInHand.length >= 7) {
+                const uniqueNumberValues = new Set(numberCardsInHand.map(c => c.value));
+
+                if (uniqueNumberValues.size >= 7) {
+                    player.hasStayed = true; // Kết thúc lượt chơi của người này
+
+                    // Tính điểm
+                    let finalScore = numberCardsInHand.reduce((sum, val) => sum + val.value, 0);
+                    const modifiers = player.hand.filter(c => c.type === 'modifier');
+                    let hasX2 = false;
+
+                    modifiers.forEach(mod => {
+                        if (mod.name === 'x2') hasX2 = true;
+                        else finalScore += mod.value;
+                    });
+
+                    finalScore += 15; // Cộng 15 điểm thưởng
+                    if (hasX2) finalScore *= 2;
+
+                    player.score = finalScore;
+                    player.totalScore += player.score;
+
+                    if (player.totalScore >= 200) {
+                        gameManager.endGame(interaction.channelId);
+                        return interaction.editReply(`${drawnCardsMessage}\n🎉 **FLIP 7!** 🎉\n**${player.username}** có 7 lá bài số khác nhau và thắng!\n🎉 **${player.username.toUpperCase()} LÀ NGƯỜI CHIẾN THẮNG!** 🎉\nVới **${player.totalScore}** điểm, trò chơi kết thúc!`);
+                    }
+
+                    game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.players.length;
+                    const nextPlayer = game.players[game.currentPlayerIndex];
+
+                    const replyMessage = `${drawnCardsMessage}\n🎉 **FLIP 7!** 🎉\n**${player.username}** đã có 7 lá bài số khác nhau và thắng ngay lập tức!\nĐiểm vòng này: **${player.score}**\nTổng điểm: **${player.totalScore}**\n\nĐến lượt của **${nextPlayer.username}**.`
+
+                    player.hand = [];
+                    player.score = 0;
+                    player.isBusted = false;
+                    player.hasStayed = false;
+
+                    return interaction.editReply(replyMessage);
+                }
+            }
+            
+            const hasDuplicate = new Set(numberCardsInHand.map(c => c.name)).size !== numberCardsInHand.length;
+
+            if (hasDuplicate) {
+                const secondChanceIndex = player.hand.findIndex(c => c.name === 'Second Chance');
+
+                if (secondChanceIndex !== -1) {
+                    player.hand.splice(secondChanceIndex, 1); // Dùng lá Second Chance
+                    const bustedCard = player.hand.pop(); // Bỏ lá bài vừa rút gây trùng
+
+                    player.score = player.hand.filter(c => c.type === 'number').reduce((sum, card) => sum + card.value, 0);
+
+                    return interaction.editReply(`${drawnCardsMessage}\n**${player.username}** suýt nữa thì BUST nhưng đã được **Second Chance** cứu!\nBài của bạn: ${player.hand.map(c => c.name).join(', ')}\nĐiểm vòng này: **${player.score}**\n\nTiếp tục \`hit\` hay \`stay\`?`);
+                } else {
+                    // BUST!
+                    const nextPlayer = game.players[(game.currentPlayerIndex + 1) % game.players.length];
+                    const replyMessage = `${drawnCardsMessage}\n... và **BUST!**\nĐiểm của vòng: **0**\nTổng điểm: **${player.totalScore}**\n\nĐến lượt của **${nextPlayer.username}**.`
+
+                    player.score = 0;
+                    player.hand = [];
+                    player.isBusted = false;
+                    player.hasStayed = false;
+                    game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.players.length; // Lượt của người chơi tiếp theo
+
+                    return interaction.editReply(replyMessage);
+                }
+            }
+
+            // Tính lại điểm của vòng nếu không bust và không có Flip 7
+            player.score = numberCardsInHand.reduce((sum, card) => sum + card.value, 0);
+
+            return interaction.editReply(`${drawnCardsMessage}\nBài của bạn: ${player.hand.map(c => c.name).join(', ')}\nĐiểm của vòng: **${player.score}**\nTổng điểm: **${player.totalScore}**\n\nTiếp tục \`hit\` hay \`stay\`?`);
+
+        } else if (subcommand === 'stay') {
+            const game = gameManager.getGame(channelId);
+            const player = game.players[game.currentPlayerIndex];
+
+            if (!game || game.gameState !== 'in-progress') {
+                return interaction.reply({ content: 'Ván game chưa bắt đầu hoặc đã kết thúc.', ephemeral: true });
+            }
+
+            if (player.id !== interaction.user.id) {
+                return interaction.reply({ content: 'Chưa đến lượt của bạn.', ephemeral: true });
+            }
+
+            player.hasStayed = true;
+
+            // Tính điểm vòng này với logic MODIFIERS
+            let roundScore = 0;
+            const numberCards = player.hand.filter(c => c.type === 'number');
+            const modifierCards = player.hand.filter(c => c.type === 'modifier');
+            let hasX2 = false;
+
+            // 1. Cộng điểm từ các lá bài số
+            roundScore = numberCards.reduce((sum, card) => sum + card.value, 0);
+
+            // 2. Xử lý các lá MODIFIERS
+            modifierCards.forEach(mod => {
+                if (mod.name === 'x2') {
+                    hasX2 = true;
+                } else {
+                    roundScore += mod.value; // Cộng các giá trị như +2, +4
+                }
+            });
+
+            // 3. Áp dụng x2 sau khi đã cộng tất cả
+            if (hasX2) {
+                roundScore *= 2;
+            }
+
+            player.score = roundScore;
+            player.totalScore += player.score;
+
+            // KIỂM TRA NGƯỜI CHIẾN THẮNG
+            if (player.totalScore >= 200) {
+                gameManager.endGame(interaction.channelId);
+                return interaction.reply(`🎉 **${player.username.toUpperCase()} LÀ NGƯỜI CHIẾN THẮNG!** 🎉\n**${player.username}** đã đạt được **${player.totalScore}** điểm và kết thúc trò chơi!\n\nDùng \`/flip7 start\` để bắt đầu một ván mới.`);
+            }
+
+            // Chuyển lượt cho người chơi tiếp theo
+            game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.players.length;
+            const nextPlayer = game.players[game.currentPlayerIndex];
+
+            const message = `**${player.username}** đã chọn dừng lại với **${player.score}** điểm trong vòng này.\nTổng điểm: **${player.totalScore}**.\n\nĐến lượt của **${nextPlayer.username}**.`;
+
+            player.hand = [];
+            player.score = 0;
+            player.isBusted = false;
+            player.hasStayed = false;
+
+            // TODO: Check if the round is over
+            return interaction.reply(message);
+
+        } else if (subcommand === 'hand') {
+            const game = gameManager.getGame(channelId);
+
+            if (!game) {
+                return interaction.reply({ content: 'Không có phòng chơi nào đang hoạt động ở kênh này.', ephemeral: true });
+            }
+
+            const player = game.players.find(p => p.id === interaction.user.id);
+
+            if (!player) {
+                return interaction.reply({ content: 'Bạn không có trong phòng chơi này.', ephemeral: true });
+            }
+
+            const hands = game.players.map(p => `**${p.username}**: ${p.hand.map(c => c.name).join(', ')}`).join('\n');
+            return interaction.reply(`Các lá bài trên tay của bạn:\n${hands}`);
+        } else if (subcommand === 'status') {
+            const game = gameManager.getGame(channelId);
+
+            if (!game) {
+                return interaction.reply({ content: 'Không có phòng chơi nào đang hoạt động ở kênh này.', ephemeral: true });
+            }
+
+            const gameState = game.gameState;
+            const players = game.players.map(p => `**${p.username}**: ${p.score} điểm (Tổng: ${p.totalScore})`).join('\n');
+            const currentPlayer = game.players[game.currentPlayerIndex];
+
+            return interaction.reply(`Trạng thái hiện tại của bàn chơi:\n\n${players}\n\nĐến lượt của **${currentPlayer.username}**. Game đang ở trạng thái: **${gameState}**`);
+        }
+
+        // Logic xử lý các subcommand khác sẽ được thêm vào đây
+        const remainingCommand = interaction.options.getSubcommand();
+        if(remainingCommand) {
+            await interaction.reply({ content: `Lệnh '${remainingCommand}' đang được xây dựng!`, ephemeral: true });
+        }
+    },
+}; 

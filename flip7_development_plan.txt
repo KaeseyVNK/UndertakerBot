@@ -1,0 +1,82 @@
+# Kế hoạch phát triển game Flip 7 trên Discord
+
+Đây là kế hoạch chi tiết để xây dựng bot game Flip 7, có thể chơi từ 1-4 người.
+
+## Giai đoạn 1: Thiết lập nền tảng và Logic Cốt lõi
+
+1.  **Cấu trúc lệnh (Command Structure):**
+    *   Tạo một lệnh chính `/flip7` với các subcommand: `start`, `join`, `leave`, `hit`, `stay`, `hand`, `status`.
+    *   Lệnh `start` sẽ tạo một phòng chơi mới.
+    *   Lệnh `join` cho phép người khác tham gia phòng.
+    *   Lệnh `leave` để rời khỏi phòng chơi.
+
+2.  **Quản lý Trạng thái Game:**
+    *   Tạo một đối tượng (object) hoặc class để quản lý trạng thái của mỗi phòng chơi.
+    *   Đối tượng này sẽ lưu trữ:
+        *   `gameId`: ID duy nhất của phòng chơi (có thể là ID của kênh).
+        *   `players`: Danh sách người chơi trong phòng.
+        *   `deck`: Bộ bài đã được xáo trộn.
+        *   `currentPlayerIndex`: Chỉ số của người chơi đang đến lượt.
+        *   `gameState`: Trạng thái hiện tại của game (e.g., `waiting`, `in-progress`, `finished`).
+        *   `roundScores`: Điểm của mỗi người chơi trong vòng hiện tại.
+
+3.  **Logic Bộ bài (Deck Logic):**
+    *   Viết hàm tạo bộ bài 94 lá theo đúng quy tắc của Flip 7.
+    *   Viết hàm xáo trộn bộ bài.
+    *   Viết hàm rút một lá bài từ bộ bài.
+
+4.  **Logic Chơi cơ bản (Hit & Stay):**
+    *   Triển khai logic cho hành động `hit`:
+        *   Rút một lá bài.
+        *   Kiểm tra xem người chơi có bị "bust" không (rút phải lá bài số đã có).
+        *   Nếu bust, lượt của người chơi kết thúc, điểm vòng đó = 0.
+        *   Nếu không, thêm lá bài vào tay người chơi và cập nhật giao diện.
+    *   Triển khai logic cho hành động `stay`:
+        *   Lượt của người chơi kết thúc. Họ giữ lại số điểm hiện tại cho vòng đó.
+
+## Giai đoạn 2: Tích hợp Discord và Giao diện người dùng
+
+1.  **Sử dụng Discord Embeds:**
+    *   Thiết kế một Embed đẹp mắt để hiển thị trạng thái bàn chơi.
+    *   Embed cần hiển thị:
+        *   Tên người chơi và điểm tổng.
+        *   Các lá bài trên tay của mỗi người chơi trong vòng hiện tại.
+        *   Điểm tạm thời của mỗi người chơi trong vòng.
+        *   Lượt của ai đang đến.
+
+2.  **Sử dụng Discord Buttons:**
+    *   Tạo các nút "Hit" và "Stay" để người chơi tương tác.
+    *   Khi đến lượt, người chơi sẽ thấy các nút này và có thể nhấp vào để thực hiện hành động.
+    *   Các nút sẽ bị vô hiệu hóa khi không phải lượt của họ.
+
+3.  **Luồng Game (Game Flow):**
+    *   Khi một người chơi `stay` hoặc `bust`, tự động chuyển lượt cho người chơi tiếp theo.
+    *   Khi tất cả người chơi đã `stay` hoặc `bust`, vòng chơi kết thúc.
+    *   Tính điểm, cộng vào điểm tổng và bắt đầu vòng mới.
+    *   Thông báo khi có người chơi đạt 200 điểm và công bố người chiến thắng.
+
+## Giai đoạn 3: Triển khai các lá bài Đặc biệt
+
+1.  **Logic cho Action Cards:**
+    *   `Freeze`: Khi rút lá này, người rút sẽ chọn một người chơi (có thể là chính mình). Người bị chọn sẽ bị buộc phải "Stay".
+    *   `Flip Three`: Người rút chọn một người chơi. Người bị chọn phải rút liên tiếp 3 lá bài.
+    *   `Second Chance`: Nếu người chơi có lá này, họ sẽ không bị bust khi rút phải lá bài trùng. Lá bài trùng và lá "Second Chance" sẽ bị loại bỏ.
+
+2.  **Logic cho Modifier Cards:**
+    *   `+X`: Cộng thêm điểm tương ứng vào điểm của vòng đó.
+    *   `x2`: Nhân đôi tổng điểm của các lá bài số.
+
+## Giai đoạn 4: Hoàn thiện và Lưu trữ
+
+1.  **Quản lý nhiều phòng chơi:**
+    *   Đảm bảo bot có thể xử lý nhiều game Flip 7 diễn ra cùng lúc trên các kênh khác nhau. Sử dụng ID kênh làm định danh cho mỗi game.
+
+2.  **Lưu trữ điểm (Data Persistence):**
+    *   Sử dụng cơ sở dữ liệu (SQLite đã có trong dự án của bạn) để lưu trữ điểm số tổng của người chơi qua các game.
+    *   Bạn có thể mở rộng schema `profiles` hiện có để thêm các thống kê về game Flip 7 (số trận thắng, điểm cao nhất, v.v.).
+
+3.  **Hướng dẫn và Tin nhắn:**
+    *   Tạo các tin nhắn hướng dẫn rõ ràng về cách chơi.
+    *   Thêm các thông báo sinh động khi người chơi `bust`, `win` hoặc khi có các sự kiện đặc biệt xảy ra.
+
+Chúc bạn thành công với dự án này! 

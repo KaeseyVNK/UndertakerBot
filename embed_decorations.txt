@@ -1,0 +1,92 @@
+Chào bạn, đây là một số gợi ý để trang trí cho tin nhắn Embed trong Discord.js, bạn có thể áp dụng cho lệnh /profile hoặc bất kỳ lệnh nào khác.
+
+--- CÁC THÀNH PHẦN CỦA EMBED ---
+
+1.  **Màu sắc (Color)**:
+    -   Bạn có thể dùng mã HEX: `.setColor('#FF0000')` (màu đỏ)
+    -   Bạn có thể dùng mã màu integer: `.setColor(0xFF0000)`
+    -   Bạn có thể dùng mảng RGB: `.setColor([255, 0, 0])`
+    -   Một số màu đẹp:
+        -   `#0099ff` (Xanh dương)
+        -   `#44d92d` (Xanh lá)
+        -   `#ffc300` (Vàng)
+        -   `#ff33e9` (Hồng)
+        -   `#7033ff` (Tím)
+
+2.  **Tiêu đề (Title) và URL**:
+    -   `.setTitle('Đây là tiêu đề')`
+    -   Bạn có thể thêm URL vào tiêu đề để nó có thể click được:
+        `.setURL('https://discord.js.org/')`
+        `.setTitle('Bấm vào đây để xem tài liệu Discord.js')`
+
+3.  **Tác giả (Author)**:
+    -   Hiển thị một dòng chữ nhỏ ở trên cùng của Embed.
+    -   `.setAuthor({ name: 'Tên tác giả', iconURL: 'link_anh_dai_dien', url: 'link_khi_click_vao_ten' })`
+    -   Ví dụ: `.setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL() })`
+
+4.  **Mô tả (Description)**:
+    -   Một đoạn văn bản chính trong Embed.
+    -   `.setDescription('Đây là một đoạn mô tả dài. Bạn có thể sử dụng **markdown** tại đây.')`
+
+5.  **Trường thông tin (Fields)**:
+    -   Dùng để hiển thị thông tin dạng cột.
+    -   `.addFields({ name: 'Tên trường', value: 'Giá trị', inline: true/false })`
+    -   `inline: true` sẽ làm cho các trường nằm trên cùng một hàng (nếu đủ chỗ).
+    -   `inline: false` sẽ làm trường đó chiếm trọn một hàng.
+    -   Bạn có thể thêm một trường trống để tạo khoảng cách: `.addFields({ name: '\u200B', value: '\u200B' })`
+
+6.  **Hình ảnh (Images)**:
+    -   **Ảnh nhỏ (Thumbnail)**: Ảnh nhỏ ở góc trên bên phải.
+        `.setThumbnail('link_den_anh.jpg')`
+    -   **Ảnh lớn (Image)**: Ảnh lớn ở phía dưới Embed.
+        `.setImage('link_den_anh.jpg')`
+
+7.  **Chân trang (Footer)**:
+    -   Dòng chữ nhỏ ở cuối Embed.
+    -   `.setFooter({ text: 'Đây là chân trang', iconURL: 'link_anh_icon.png' })`
+
+8.  **Dấu thời gian (Timestamp)**:
+    -   Hiển thị thời gian Embed được gửi.
+    -   `.setTimestamp()` // Sẽ lấy thời gian hiện tại
+    -   `.setTimestamp(new Date())` // Có thể chỉ định thời gian cụ thể
+
+--- ĐỊNH DẠNG VĂN BẢN (MARKDOWN) ---
+
+Bạn có thể dùng các định dạng sau trong `description`, `fields`, `author`, `footer`:
+
+-   `*italic*` hoặc `_italic_` -> _in nghiêng_
+-   `**bold**` -> **in đậm**
+-   `***bold italic***` -> ***in đậm và nghiêng***
+-   `__underline__` -> gạch chân
+-   `~~strikethrough~~` -> gạch ngang
+-   `> quote` -> trích dẫn
+-   `>> multiline quote` -> trích dẫn nhiều dòng
+-   `\``code`\`` -> `khối mã nhỏ`
+-   `\```` ```javascript
+    console.log('Hello');
+    ``` ```` -> khối mã lớn có màu
+-   `[link text](https://example.com)` -> [Tạo link](https://example.com)
+-   `||spoiler||` -> che nội dung
+
+--- ĐỊNH DẠNG THỜI GIAN CỦA DISCORD ---
+
+Khi bạn có một đối tượng Date của JavaScript, bạn có thể định dạng nó thành tag thời gian của Discord để nó hiển thị theo múi giờ của người xem.
+
+`const timestamp = Math.floor(dateObject.getTime() / 1000);`
+
+-   `<t:${timestamp}:d>` -> 01/01/2024 (Ngày ngắn)
+-   `<t:${timestamp}:D>` -> 1 tháng 1, 2024 (Ngày dài)
+-   `<t:${timestamp}:t>` -> 12:00 (Giờ ngắn)
+-   `<t:${timestamp}:T>` -> 12:00:00 (Giờ dài)
+-   `<t:${timestamp}:f>` -> 1 tháng 1, 2024 12:00 (Ngày và giờ)
+-   `<t:${timestamp}:F>` -> Thứ hai, 1 tháng 1, 2024 12:00 (Ngày trong tuần, ngày và giờ)
+-   `<t:${timestamp}:R>` -> 5 tháng trước (Thời gian tương đối)
+
+--- KÝ TỰ ĐẶC BIỆT & EMOJI ---
+
+-   Bạn có thể sao chép và dán emoji trực tiếp vào code.
+-   Sử dụng các ký tự đặc biệt để trang trí, ví dụ: `•`, `➤`, `✦`, `︱`, `▬▬▬▬▬▬`
+-   Ví dụ: `.setTitle('✦ Profile của bạn ✦')`
+-   Hoặc dùng để phân cách các trường: `.addFields({ name: '▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬', value: '\u200B' })`
+
+Chúc bạn tạo ra được những Embed thật đẹp! 
