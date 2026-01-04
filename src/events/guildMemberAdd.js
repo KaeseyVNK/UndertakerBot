@@ -1,5 +1,5 @@
 const { Events } = require('discord.js');
-const { guildId, notifyChannelId, notifyRoleIds } = require('../../config.js');
+const { guildId, notifyChannelId } = require('../../config.js');
 
 module.exports = {
     name: Events.GuildMemberAdd,
@@ -9,8 +9,7 @@ module.exports = {
         const channel = await member.client.channels.fetch(notifyChannelId);
         if (!channel) return console.error('Notify channel not found');
 
-        const mentions = notifyRoleIds.map(id => `<@&${id}>`).join(' ');
-        const message = `🎉🎉🎉🎉 Các ${mentions}  đón thành viên mới ${member.user.username} đi nào, không thì bị chích điện! 🎉🎉🎉🎉`;
+        const message = `Thay mặt <@&755328143023144971> chào mừng bạn ${member.toString()} đến với server và có khoảng thời gian vui vẻ`;
 
         await channel.send(message);
     },
