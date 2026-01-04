@@ -27,6 +27,19 @@ module.exports = {
 		)
 	`);
 
+        // Create mining_profiles table if not exists
+        client.db.exec(`
+        CREATE TABLE IF NOT EXISTS mining_profiles (
+            user_id TEXT PRIMARY KEY,
+            energy INTEGER DEFAULT 20,
+            last_energy_update INTEGER,
+            iron INTEGER DEFAULT 0,
+            gold INTEGER DEFAULT 0,
+            diamond INTEGER DEFAULT 0,
+            pickaxe_level INTEGER DEFAULT 1
+        )
+    `);
+
 		// Start the inactivity checker
 		setInterval(async () => {
 			const activeGames = gameManager.getAllGames();
