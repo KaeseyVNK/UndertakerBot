@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, ContainerBuilder, TextDisplayBuilder, SectionBuilder, SeparatorBuilder, ThumbnailBuilder, MessageFlags } = require('discord.js');
 
 const MAX_ENERGY = 20;
 const REGEN_RATE_MS = 6 * 60 * 1000; // 6 minutes per energy
@@ -88,83 +88,134 @@ module.exports = {
         if (subcommand === 'action') {
             const currentEnergy = getEnergy(row);
 
+            // Bước 1: Kiểm tra năng lượng
             if (currentEnergy < 1) {
                 const now = Date.now();
                 const lastUpdate = row.last_energy_update || now;
-                // Calculate time until next energy
-                // stored + recovered = current (which is 0)
-                // We need to wait until stored + recovered >= 1
-                // Actually, currentEnergy is 0, meaning (now - lastUpdate) < REGEN_RATE_MS * (1 - row.energy?? no)
-                // Let's simpler logic: Next energy is at last_update + (recovered + 1) * REGEN_RATE_MS ??
-                // If current energy is 0, it means we used all stored energy and haven't recovered 1 yet.
-                // The time until next point is: REGEN_RATE_MS - ((now - lastUpdate) % REGEN_RATE_MS)
                 const timeToNext = REGEN_RATE_MS - ((now - lastUpdate) % REGEN_RATE_MS);
                 const minutes = Math.ceil(timeToNext / 60000);
                 
                 return interaction.reply({ content: `🚫 Bạn đã hết năng lượng! Vui lòng đợi ${minutes} phút để hồi phục 1 năng lượng.`, ephemeral: true });
             }
 
-            const reward = getMiningReward(row.pickaxe_level);
-            
-            // Update DB
-            // We set energy to currentEnergy - 1.
-            // Note: Since we calculated currentEnergy based on elapsed time, we need to update 'last_energy_update' carefully to not lose partial progress?
-            // Actually, usually simpler: 
-            // set energy = currentEnergy - 1
-            // set last_energy_update = now - ((now - old_last_update) % REGEN_RATE_MS) ??
-            // OR just set last_energy_update = now is fine IF we assume energy is discrete.
-            // But prompt says: "Kiểm tra và cập nhật năng lượng dựa trên thời gian trôi qua"
-            // Let's use the prompt's formula logic implicitly.
-            // If I set last_energy_update = now, I reset the timer. This is standard for "claiming" the regen.
-            // But if user has 19.9 energy (almost 20), and mines, they go to 19. 
-            // If I reset timer to NOW, they lose the partial progress toward the next point.
-            // Better: update `last_energy_update` so it reflects the "timestamp where energy was theoretically full or matches current calculation".
-            // Let's stick to simple: Reset timer to NOW for the "consumed" energy? 
-            // No, standard mobile game logic:
-            // Stored Energy in DB is the snapshot.
-            // Real Energy = Stored + Floor(Elapsed / Rate).
-            // New Stored = Real - 1.
-            // New Last Update: We should keep the "remainder" time.
-            // New Last Update = Now - (Elapsed % Rate). This preserves progress to next point.
-            
+            // Chuẩn bị tính toán thời gian hồi phục để bảo toàn progress
             const now = Date.now();
             const elapsed = now - (row.last_energy_update || now);
             const remainder = elapsed % REGEN_RATE_MS;
-            // However, if we were at MAX, we don't have "remainder" effectively, or rather we start fresh.
-            // If Real == MAX_ENERGY, then New Last Update = Now.
-            
+
+            // Bước 2: Trừ 1 năng lượng cơ bản
+            let energyAfterBaseCost = currentEnergy - 1;
+
+            // Bước 3: Random Event
+            const eventRoll = Math.random() * 100;
+            let eventType = 'normal';
+            let message = '';
+            let color = 0xA9A9A9; // Grey default
+            let rewardMultiplier = 1;
+            let energyChange = 0;
+            let goldLossPercent = 0;
+
+            // Tỷ lệ: 70% Normal | 10% x2 | 5% Heal | 10% CaveIn | 5% Goblin
+            if (eventRoll < 70) {
+                eventType = 'normal';
+                color = 0x808080; // Grey
+            } else if (eventRoll < 80) { // 10% May mắn x2
+                eventType = 'lucky_x2';
+                rewardMultiplier = 2;
+                message = '🌟 **MAY MẮN!** Bạn trúng mạch khoáng sản! Tài nguyên nhận được x2!';
+                color = 0x00FF00; // Green
+            } else if (eventRoll < 85) { // 5% Suối nước thần
+                eventType = 'lucky_heal';
+                energyChange = 3;
+                message = '💧 **MAY MẮN!** Bạn tìm thấy Suối Nước Thần! Hồi phục ngay 3 năng lượng!';
+                color = 0x00FFFF; // Cyan
+            } else if (eventRoll < 95) { // 10% Sập hầm
+                eventType = 'unlucky_cavein';
+                energyChange = -2;
+                message = '⚠️ **XUI XẺO!** Hầm mỏ bị sập! Bạn mất thêm 2 năng lượng để thoát thân!';
+                color = 0xFF0000; // Red
+            } else { // 5% Goblin
+                eventType = 'unlucky_goblin';
+                goldLossPercent = 0.1;
+                message = '👺 **XUI XẺO!** Goblin xuất hiện và trộm 10% số vàng của bạn!';
+                color = 0xFFA500; // Orange
+            }
+
+            // Bước 4: Tính tài nguyên
+            let finalReward = { type: null, amount: 0, name: '' };
+
+            if (eventType === 'normal' || eventType === 'lucky_x2') {
+                finalReward = getMiningReward(row.pickaxe_level);
+                if (finalReward.type) {
+                    finalReward.amount *= rewardMultiplier;
+                }
+            }
+
+            // Tính năng lượng cuối cùng
+            let finalEnergy = energyAfterBaseCost + energyChange;
+            if (finalEnergy > MAX_ENERGY) finalEnergy = MAX_ENERGY;
+            if (finalEnergy < 0) finalEnergy = 0;
+
+            // Cập nhật thời gian hồi phục
             let newLastUpdate;
-            if (currentEnergy >= MAX_ENERGY) {
+            if (finalEnergy >= MAX_ENERGY) {
                 newLastUpdate = now;
             } else {
                 newLastUpdate = now - remainder;
             }
 
+            // Bước 5: Lưu DB và trả lời
             let updateQuery = 'UPDATE mining_profiles SET energy = ?, last_energy_update = ?';
-            const params = [currentEnergy - 1, newLastUpdate];
+            const params = [finalEnergy, newLastUpdate];
+            
+            let description = message ? `${message}\n\n` : '';
 
-            if (reward.type) {
-                updateQuery += `, ${reward.type} = ${reward.type} + ?`;
-                params.push(reward.amount);
+            // Xử lý phần thưởng
+            if (finalReward.type) {
+                updateQuery += `, ${finalReward.type} = ${finalReward.type} + ?`;
+                params.push(finalReward.amount);
+                description += `Bạn đã đào được: **${finalReward.name}** ${finalReward.amount > 0 ? `x${finalReward.amount}` : ''}\n`;
+            } else if (eventType === 'normal' && !finalReward.type) {
+                 description += `Bạn chỉ đào được: **${finalReward.name}**\n`;
+            }
+
+            // Xử lý mất vàng (Goblin)
+            if (eventType === 'unlucky_goblin') {
+                const lostGold = Math.floor(row.gold * goldLossPercent);
+                if (lostGold > 0) {
+                    updateQuery += `, gold = MAX(0, gold - ?)`;
+                    params.push(lostGold);
+                    description += `💸 Bạn bị mất **${lostGold}** Vàng!\n`;
+                } else {
+                    description += `💸 Goblin lục túi nhưng bạn không có đồng nào!\n`;
+                }
             }
             
             updateQuery += ' WHERE user_id = ?';
             params.push(userId);
-
+            
             db.prepare(updateQuery).run(...params);
 
-            const embed = new EmbedBuilder()
-                .setColor(reward.type === 'diamond' ? 0x00FFFF : (reward.type === 'gold' ? 0xFFD700 : 0xA9A9A9))
-                .setTitle('⛏️ Kết quả đào mỏ')
-                .setDescription(`Bạn đã đào được: **${reward.name}** ${reward.amount > 0 ? `x${reward.amount}` : ''}\nNăng lượng còn lại: ${currentEnergy - 1}/${MAX_ENERGY} ⚡`);
+            // --- BUILD CONTAINER ---
+            const container = new ContainerBuilder().setAccentColor(color);
+            
+            const title = new TextDisplayBuilder().setContent(eventType.includes('unlucky') ? '# ⛏️ Tai nạn hầm mỏ!' : (eventType.includes('lucky') ? '# ⛏️ Sự kiện may mắn!' : '# ⛏️ Kết quả đào mỏ'));
+            container.addTextDisplayComponents(title);
+            container.addSeparatorComponents(new SeparatorBuilder());
 
-            return interaction.reply({ embeds: [embed] });
+            const resultText = new TextDisplayBuilder().setContent(description);
+            container.addTextDisplayComponents(resultText);
+            
+            container.addSeparatorComponents(new SeparatorBuilder());
+            
+            const energyText = new TextDisplayBuilder().setContent(`⚡ Năng lượng: ${currentEnergy} -> **${finalEnergy}/${MAX_ENERGY}**`);
+            container.addTextDisplayComponents(energyText);
+
+            return interaction.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
         }
 
         if (subcommand === 'stats') {
             const currentEnergy = getEnergy(row);
-            const nextLevel = row.pickaxe_level + 1;
-            const nextUpgrade = UPGRADE_COSTS[nextLevel];
             
             let barLength = 10;
             let filled = Math.round((currentEnergy / MAX_ENERGY) * barLength);
@@ -174,17 +225,43 @@ module.exports = {
             // Wealth calculation
             const wealth = (row.iron * 10) + (row.gold * 50) + (row.diamond * 100) + (row.pickaxe_level * 1000);
 
-            const embed = new EmbedBuilder()
-                .setColor(0x0099FF)
-                .setTitle(`🏰 Hồ sơ Đế Chế Đào Mỏ của ${interaction.user.username}`)
-                .addFields(
-                    { name: '⚡ Năng lượng', value: `${bar} (${currentEnergy}/${MAX_ENERGY})`, inline: false },
-                    { name: '⛏️ Cúp', value: `${PICKAXE_NAMES[row.pickaxe_level]} (Level ${row.pickaxe_level})`, inline: true },
-                    { name: '💰 Tài sản', value: `Tổng giá trị: ${wealth.toLocaleString()}`, inline: true },
-                    { name: '🎒 Kho đồ', value: `⚪ Sắt: ${row.iron}\n🟡 Vàng: ${row.gold}\n💎 Kim Cương: ${row.diamond}`, inline: false }
-                );
+            const container = new ContainerBuilder().setAccentColor(0x0099FF);
             
-            return interaction.reply({ embeds: [embed] });
+            const title = new TextDisplayBuilder().setContent(`# 🏰 Hồ sơ Đế Chế Đào Mỏ`);
+            container.addTextDisplayComponents(title);
+            container.addSeparatorComponents(new SeparatorBuilder());
+
+            const userSection = new SectionBuilder();
+            const userInfo = new TextDisplayBuilder().setContent(
+                `**${interaction.user.username}**\n` +
+                `💰 Tài sản: **${wealth.toLocaleString()}**\n` +
+                `⛏️ Cúp: **${PICKAXE_NAMES[row.pickaxe_level]}** (Lv.${row.pickaxe_level})`
+            );
+            userSection.addTextDisplayComponents(userInfo);
+            
+            try {
+                const avatarURL = interaction.user.displayAvatarURL({ dynamic: true, size: 128 });
+                const thumbnail = new ThumbnailBuilder({ media: { url: avatarURL } });
+                userSection.setThumbnailAccessory(thumbnail);
+            } catch (e) {
+                console.error(e);
+            }
+            container.addSectionComponents(userSection);
+            container.addSeparatorComponents(new SeparatorBuilder());
+
+            const inventoryText = new TextDisplayBuilder().setContent(
+                `**🎒 Kho đồ:**\n` +
+                `⚪ Sắt: ${row.iron}\n` +
+                `🟡 Vàng: ${row.gold}\n` +
+                `💎 Kim Cương: ${row.diamond}`
+            );
+            container.addTextDisplayComponents(inventoryText);
+            container.addSeparatorComponents(new SeparatorBuilder());
+
+            const energyText = new TextDisplayBuilder().setContent(`⚡ Năng lượng: ${bar} (${currentEnergy}/${MAX_ENERGY})`);
+            container.addTextDisplayComponents(energyText);
+
+            return interaction.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
         }
 
         if (subcommand === 'upgrade') {
@@ -215,7 +292,12 @@ module.exports = {
                 WHERE user_id = ?
             `).run(nextLevel, cost.iron, cost.gold, cost.diamond, userId);
 
-            return interaction.reply({ content: `✅ Chúc mừng! Bạn đã nâng cấp lên **${cost.name}**! Tỷ lệ đào đồ xịn đã tăng lên!` });
+            const container = new ContainerBuilder().setAccentColor(0x00FF00);
+            const title = new TextDisplayBuilder().setContent('# ✅ Nâng Cấp Thành Công!');
+            const desc = new TextDisplayBuilder().setContent(`Chúc mừng! Bạn đã nâng cấp lên **${cost.name}**! Tỷ lệ đào đồ xịn đã tăng lên!`);
+            container.addTextDisplayComponents(title, desc);
+
+            return interaction.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
         }
 
         if (subcommand === 'leaderboard') {
@@ -226,28 +308,26 @@ module.exports = {
                 return { ...p, wealth };
             }).sort((a, b) => b.wealth - a.wealth).slice(0, 10);
 
-            const embed = new EmbedBuilder()
-                .setColor(0xFFD700)
-                .setTitle('🏆 Bảng Xếp Hạng Đại Gia Đào Mỏ')
-                .setTimestamp();
+            const container = new ContainerBuilder().setAccentColor(0xFFD700);
+            const title = new TextDisplayBuilder().setContent('# 🏆 Bảng Xếp Hạng Đại Gia');
+            container.addTextDisplayComponents(title);
+            container.addSeparatorComponents(new SeparatorBuilder());
 
             let description = '';
             for (let i = 0; i < sorted.length; i++) {
                 const p = sorted[i];
-                // Try to get username from cache if possible, otherwise just ID or fetch async (but async in loop is slow)
-                // Since this is a simple command, showing User ID or formatted mention is okay.
-                // Or we can query the users table for name if available.
                 const userRow = db.prepare('SELECT full_name FROM users WHERE user_id = ?').get(p.user_id);
                 const name = userRow ? userRow.full_name : `<@${p.user_id}>`;
                 
-                description += `**#${i + 1}** ${name}\n💰 Tài sản: ${p.wealth.toLocaleString()} | ⛏️ Cúp Lvl ${p.pickaxe_level}\n\n`;
+                description += `**#${i + 1}** ${name} — 💰 ${p.wealth.toLocaleString()}\n`;
             }
 
             if (description === '') description = 'Chưa có ai chơi game này!';
 
-            embed.setDescription(description);
+            const list = new TextDisplayBuilder().setContent(description);
+            container.addTextDisplayComponents(list);
 
-            return interaction.reply({ embeds: [embed] });
+            return interaction.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
         }
     }
 };
