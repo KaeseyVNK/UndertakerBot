@@ -72,11 +72,62 @@ module.exports = {
         .addSubcommand(subcommand =>
             subcommand
                 .setName('leaderboard')
-                .setDescription('Xem bảng xếp hạng đại gia')),
+                .setDescription('Xem bảng xếp hạng đại gia'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('help')
+                .setDescription('Xem hướng dẫn chơi game')),
     async execute(interaction) {
         const db = interaction.client.db;
         const userId = interaction.user.id;
         const subcommand = interaction.options.getSubcommand();
+
+        if (subcommand === 'help') {
+            const container = new ContainerBuilder().setAccentColor(0x00FF00);
+            const title = new TextDisplayBuilder().setContent('# ⛏️ CẨM NANG: ĐẾ CHẾ ĐÀO MỎ');
+            container.addTextDisplayComponents(title);
+            container.addSeparatorComponents(new SeparatorBuilder());
+
+            const intro = new TextDisplayBuilder().setContent(
+                'Chào mừng các phu vàng! Hãy dùng sức lực khai thác tài nguyên và trở thành đại gia.'
+            );
+            container.addTextDisplayComponents(intro);
+            container.addSeparatorComponents(new SeparatorBuilder());
+
+            const gameplay = new TextDisplayBuilder().setContent(
+                '**1️⃣ Cách Chơi Cơ Bản**\n' +
+                '- Dùng `/mine action` để đào (Tốn **1 Năng Lượng**).\n' +
+                '- Năng lượng tối đa: **20** (Hồi 1 điểm/6 phút).\n\n' +
+                '**2️⃣ Giá Trị Tài Nguyên**\n' +
+                '- ⚪ Sắt: 10 điểm\n' +
+                '- 🟡 Vàng: 50 điểm\n' +
+                '- 💎 Kim Cương: 100 điểm'
+            );
+            container.addTextDisplayComponents(gameplay);
+            container.addSeparatorComponents(new SeparatorBuilder());
+
+            const upgrade = new TextDisplayBuilder().setContent(
+                '**3️⃣ Nâng Cấp Cúp (`/mine upgrade`)**\n' +
+                '- **Cúp Gỗ:** Mặc định.\n' +
+                '- **Cúp Sắt:** Tốn 50 Sắt (Tăng tỷ lệ Vàng/Kim Cương).\n' +
+                '- **Cúp Kim Cương:** Tốn 100 Sắt + 50 Vàng (Tỷ lệ nổ Kim Cương 15%).'
+            );
+            container.addTextDisplayComponents(upgrade);
+            container.addSeparatorComponents(new SeparatorBuilder());
+
+            const events = new TextDisplayBuilder().setContent(
+                '**4️⃣ Sự Kiện Ngẫu Nhiên**\n' +
+                '🍀 **May Mắn:**\n' +
+                '- **Mạch Khoáng Sản (10%):** Nhận x2 tài nguyên.\n' +
+                '- **Suối Nước Thần (5%):** Hồi ngay 3 Năng Lượng.\n\n' +
+                '⚠️ **Rủi Ro:**\n' +
+                '- **Sập Hầm (10%):** Mất thêm 2 Năng Lượng.\n' +
+                '- **Goblin Trộm Túi (5%):** Mất 10% Vàng hiện có.'
+            );
+            container.addTextDisplayComponents(events);
+
+            return interaction.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+        }
 
         // Ensure profile exists
         let row = db.prepare('SELECT * FROM mining_profiles WHERE user_id = ?').get(userId);
